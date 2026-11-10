@@ -494,7 +494,7 @@ void surf( vec2 uv, out vec3 col, out float h, out float rough, out float ao, ou
 	float fibre = 0.5 + 0.5 * sin( across * 6.0 * PI );
 	float arch = sin( along * PI );
 	h = sat( 0.4 + arch * 0.4 + fibre * 0.15 );
-	col = vec3( 0.012 ) + vec3( 0.03 ) * arch * ( 0.5 + 0.5 * fibre );
+	col = vec3( 0.022 ) + vec3( 0.055 ) * arch * ( 0.5 + 0.5 * fibre );
 	ao = 0.8 + 0.2 * arch;
 	rough = 0.28 + 0.2 * ( 1.0 - arch );
 	alpha = h;

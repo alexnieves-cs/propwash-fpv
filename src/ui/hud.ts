@@ -3,6 +3,16 @@ import type { Settings } from '../core/settings';
 import type { Game } from '../game/game';
 import { h } from './dom';
 
+/** B612 Mono gives ':' and '.' a full cell, which pulls clock digits apart; wrap them so CSS can tuck them in. */
+export function clock(text: string): DocumentFragment {
+  const f = document.createDocumentFragment();
+  for (const part of text.split(/([:.])/)) {
+    if (part === ':' || part === '.') f.append(h('span', { class: 'sep' }, part));
+    else if (part) f.append(part);
+  }
+  return f;
+}
+
 const MODE_LABEL: Record<string, string> = { cruise: 'CRUISE', angle: 'ANGLE', horizon: 'HORIZON', acro: 'ACRO' };
 const VIEW_LABEL: Record<string, string> = { fpv: 'FPV', chase: 'CHASE', los: 'LINE OF SIGHT' };
 
@@ -66,7 +76,9 @@ export class Hud {
     game.on('message', (m) => this.toast(m.text, m.tone, m.ms));
     game.on('trick', (e) => this.trick(e.name, e.points, e.multiplier));
     game.on('combo', (c) => {
-      if (c.count > 1) this.toast(`Combo banked · ${Math.round(c.total).toLocaleString()}`, 'good', 2400);
+      // a crash reports the combo with nothing banked
+      if (c.total <= 0) this.toast('Combo lost', 'warn', 1800);
+      else if (c.count > 1) this.toast(`Combo banked · ${Math.round(c.total).toLocaleString()}`, 'good', 2400);
     });
     game.on('countdown', (n) => this.count(n));
     game.on('lap', (l) => {
@@ -121,7 +133,7 @@ export class Hud {
     const mph = s.hud.units === 'mph';
     this.speed.textContent = String(Math.round(t.speed * (mph ? 2.23694 : 3.6)));
     this.speedUnit.textContent = mph ? 'mph' : 'km/h';
-    this.alt.textContent = t.agl < 10 ? t.agl.toFixed(1) : String(Math.round(t.agl));
+    this.alt.replaceChildren(clock(t.agl < 10 ? t.agl.toFixed(1) : String(Math.round(t.agl))));
 
     this.mode.textContent = MODE_LABEL[s.flightMode];
     this.arm.textContent = t.crashed ? 'CRASHED' : t.armed ? 'ARMED' : 'DISARMED';
@@ -131,7 +143,7 @@ export class Hud {
     this.link.textContent = `LINK ${Math.round(t.link * 100)}%`;
     this.link.style.color = t.link < 0.5 ? 'var(--bad)' : '';
 
-    this.volts.textContent = t.cellVolts.toFixed(2);
+    this.volts.replaceChildren(clock(t.cellVolts.toFixed(2)));
     this.cellFill.style.transform = `scaleX(${t.battery.toFixed(3)})`;
     this.draw.textContent = s.sim.battery ? `${Math.round(t.mah)} mAh · ${Math.round(t.current)} A` : `${Math.round(t.current)} A`;
     const batt = !s.sim.battery ? 'ok' : t.cellVolts < 3.3 ? 'critical' : t.cellVolts < 3.5 ? 'low' : 'ok';
@@ -140,7 +152,7 @@ export class Hud {
 
     // top centre: race clock or freestyle score
     if (t.raceState !== 'none') {
-      this.timer.textContent = t.raceState === 'idle' ? formatTime(0) : formatTime(t.raceTime);
+      this.timer.replaceChildren(clock(t.raceState === 'idle' ? formatTime(0) : formatTime(t.raceTime)));
       const parts: (Node | string)[] = [h('span', null, 'LAP ', h('b', null, `${t.lap}/${t.laps}`)), h('span', null, 'GATE ', h('b', null, `${t.gatesPassed}/${t.gatesTotal}`))];
       if (t.delta !== null) {
         const sign = t.delta <= 0 ? '-' : '+';

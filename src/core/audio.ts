@@ -78,32 +78,37 @@ const REFERENCE_DISTANCE = 3;
 const FADE_OUT_START = 300;
 const FADE_OUT_END = 400;
 /** Distance at which air absorption has halved the motor bus bandwidth, metres. */
-const AIR_HALF_DISTANCE = 40;
+const AIR_HALF_DISTANCE = 30;
 const AIR_OPEN_HZ = 18000;
+/** An action camera in its case hears a duller world than a bystander's ears do. */
+const ONBOARD_MIC_HZ = 11000;
 /** Caller-side differencing can spike on a camera cut; keep the Doppler ratio sane and smoothed. */
 const MAX_RADIAL_SPEED = 120;
 const DOPPLER_SMOOTH = 0.05;
 
-/** Per-voice gain at full throttle. Four voices sum to roughly −11 dBFS RMS ahead of the compressor. */
+/** Per-voice gain at full throttle: four motors flat out push the compressor about 6 dB into gain reduction. */
 const VOICE_LEVEL = 0.2;
 /**
  * Loudness is `IDLE_FLOOR·x^0.4 + (1−IDLE_FLOOR)·x^1.6` with x = omega/maxOmega: close to
- * thrust (x²) at the top, but with a floor that keeps a 5 % idle about 25 dB down rather than 50.
+ * thrust (x²) at the top, but with a floor that keeps a 5 % idle about 23 dB down rather than 50.
  */
-const IDLE_FLOOR = 0.16;
+const IDLE_FLOOR = 0.2;
 /** Shaft-rate rumble and motor whine relative to the blade-pass tone. */
 const SHAFT_LEVEL = 0.2;
 /** Riding on the frame you hear the shaft through the airframe, not just through the air. */
-const SHAFT_ONBOARD_BOOST = 1.4;
+const SHAFT_ONBOARD_BOOST = 0.5;
 /** 2× blade-pass: a hint at idle, a rasp at full throttle. */
 const EDGE_IDLE = 0.1;
-const EDGE_THROTTLE = 0.32;
+const EDGE_THROTTLE = 0.26;
 /** The filter never closes below this, or idle would vanish on small speakers. */
-const CUTOFF_FLOOR_HZ = 520;
+const CUTOFF_FLOOR_HZ = 800;
 
-const NOISE_OPEN = 0.5;
-const NOISE_DUCTED = 0.95;
-const RUMBLE_LEVEL = 1.5;
+/** Broadband prop noise at full thrust; a duct adds roughly 5 dB of it. */
+const NOISE_OPEN = 0.22;
+const NOISE_DUCTED = 0.38;
+/** Prop-wash rumble at propwash = 1: level with the motors' own tone in a hover, not above it. */
+const RUMBLE_LEVEL = 1.1;
+/** Wind at 50 m/s and up: as loud as the motors at full throttle. */
 const WIND_LEVEL = 1.5;
 /** Peak pitch and amplitude wobble of a motor at full prop wash (cents, fraction). */
 const FLUTTER_CENTS = 30;
@@ -119,7 +124,7 @@ const WANDER_FAST_HZ = [2.3, 3.1, 1.9, 2.7];
 const WANDER_SLOW = 0.0025;
 const WANDER_FAST = 0.0015;
 /** Motors 0,1 sit on the right of the frame and 2,3 on the left (the sim's MOTOR_LAYOUT order). */
-const PAN = [0.32, 0.22, -0.32, -0.22];
+const PAN = [0.5, 0.36, -0.5, -0.36];
 /** Each motor reads the flutter buffer at its own speed so their wobbles never line up. */
 const FLUTTER_RATE = [0.83, 1, 1.19, 1.37];
 
@@ -130,7 +135,7 @@ const PINK_RMS = 0.25;
 const FLUTTER_RMS = 1 / 3;
 
 /** The shaper passes everything below the knee untouched and lands on exactly ±1 at ±CLIP_RANGE. */
-const CLIP_KNEE = 0.75;
+const CLIP_KNEE = 0.85;
 const CLIP_RANGE = 2;
 
 /** One-shots start a hair in the future so their attack ramp is never truncated by scheduling jitter. */
@@ -299,7 +304,7 @@ function bladeWave(ctx: BaseAudioContext): PeriodicWave {
   return makeWave(
     ctx,
     32,
-    (n) => Math.pow(n, -1.05) * (1 + 0.3 * Math.cos(1.7 * n + 0.6)),
+    (n) => Math.pow(n, -1.05) * (1 + 0.3 * Math.cos(1.7 * (n - 1))),
     (n) => 0.35 * Math.pow(n, -1.05) * Math.sin(2.4 * n),
   );
 }
@@ -309,7 +314,7 @@ function edgeWave(ctx: BaseAudioContext): PeriodicWave {
   return makeWave(
     ctx,
     16,
-    (n) => Math.pow(n, -0.75) * (n % 2 === 1 ? 1.3 : 0.8),
+    (n) => Math.pow(n, -0.9) * (n % 2 === 1 ? 1.3 : 0.8),
     () => 0,
   );
 }
@@ -459,7 +464,7 @@ function buildGraph(ctx: AudioContext, volumes: AudioVolumes, paused: boolean): 
   // ---- motor bus: everything the airframe radiates, then the path to the listener -----------------
   const motorBus = gainNode(ctx, 1);
   const thin = filterNode(ctx, 'highpass', 45, 0.7);
-  const body = filterNode(ctx, 'lowshelf', 220, 0);
+  const body = filterNode(ctx, 'lowshelf', 300, 0);
   body.gain.value = 0;
   // A fixed resonance is what stops pitch-tracking oscillators from sounding like a synth sweep:
   // real airframes colour every RPM the same way.
@@ -541,7 +546,8 @@ function buildGraph(ctx: AudioContext, volumes: AudioVolumes, paused: boolean): 
 
   // ---- prop-wash rumble ---------------------------------------------------------------------------
   const pinkLoop = loopSource(ctx, pink, 1, 0);
-  const rumbleTone = filterNode(ctx, 'lowpass', 200, 0.7);
+  // Band-pass, not low-pass: the bottom octave of pink noise is all headroom and no growl.
+  const rumbleTone = filterNode(ctx, 'bandpass', 110, 0.8);
   const rumbleChop = gainNode(ctx, 0.5);
   const rumbleLevel = gainNode(ctx, 0);
   pinkLoop.connect(rumbleTone).connect(rumbleChop).connect(rumbleLevel).connect(motorBus);
@@ -585,7 +591,7 @@ function buildGraph(ctx: AudioContext, volumes: AudioVolumes, paused: boolean): 
     noiseBand: new Control(noiseBand.frequency, 3000),
     noiseQ: noiseBand.Q,
     noiseLevel: new Control(noiseLevel.gain, 0),
-    rumbleTone: new Control(rumbleTone.frequency, 200),
+    rumbleTone: new Control(rumbleTone.frequency, 110),
     rumbleLevel: new Control(rumbleLevel.gain, 0),
     windTone: new Control(windTone.frequency, 220),
     windLevel: new Control(windLevel.gain, 0),
@@ -716,8 +722,6 @@ export class AudioEngine {
     }
   };
 
-  constructor() {}
-
   /** Call from a user gesture. Creates the AudioContext on first call and resumes it. Safe to call repeatedly. */
   async unlock(): Promise<void> {
     if (this.disposed) return;
@@ -791,7 +795,7 @@ export class AudioEngine {
     // ---- motors ------------------------------------------------------------------------------------
     // Highest shaft frequency whose 2× blade-pass partner still sits safely below Nyquist.
     const shaftCeiling = (g.nyquist * 0.9) / (2 * blades);
-    const cutoffCeiling = Math.min(16000, g.nyquist * 0.9);
+    const cutoffCeiling = Math.min(13000, g.nyquist * 0.9);
     const levelTc = armed ? LEVEL_TC : DISARM_TC;
     const shaftGain = SHAFT_LEVEL * lerp(0.4, 1, size) * (1 + SHAFT_ONBOARD_BOOST * onboard);
     const flutterCents = propwash * FLUTTER_CENTS;
@@ -816,7 +820,7 @@ export class AudioEngine {
       voice.bladeFreq.to(bladeHz, t, PITCH_TC, 5e-5);
       voice.edgeFreq.to(bladeHz * 2, t, PITCH_TC, 5e-5);
       // Tracks pitch so the timbre is the same at any RPM, and opens with throttle so load adds bite.
-      voice.cutoff.to(clamp(bladeHz * (3 + 11 * x * Math.sqrt(x)), CUTOFF_FLOOR_HZ, cutoffCeiling), t, CUTOFF_TC);
+      voice.cutoff.to(clamp(bladeHz * (3 + 6.5 * x * Math.sqrt(x)), CUTOFF_FLOOR_HZ, cutoffCeiling), t, CUTOFF_TC);
       const loudness = armed ? IDLE_FLOOR * Math.pow(x, 0.4) + (1 - IDLE_FLOOR) * Math.pow(x, 1.6) : 0;
       voice.level.to(loudness * VOICE_LEVEL, t, levelTc);
       voice.edgeGain.to(EDGE_IDLE + EDGE_THROTTLE * Math.min(x, 1), t, MIX_TC);
@@ -833,21 +837,22 @@ export class AudioEngine {
     spin *= 1 / MOTORS;
 
     // ---- airframe colour and the path to the listener ----------------------------------------------
-    g.thin.to(lerp(320, 45, size), t, MIX_TC);
+    g.thin.to(lerp(200, 45, size), t, MIX_TC);
     g.formant.to(lerp(2600, 1000, size), t, MIX_TC);
     g.body.to(onboard * lerp(1.5, 6, size), t, MIX_TC);
-    g.air.to(Math.min(lerp(AIR_OPEN_HZ / (1 + distance / AIR_HALF_DISTANCE), 16000, onboard), g.nyquist * 0.9), t, MIX_TC);
+    g.air.to(Math.min(lerp(AIR_OPEN_HZ / (1 + distance / AIR_HALF_DISTANCE), ONBOARD_MIC_HZ, onboard), g.nyquist * 0.9), t, MIX_TC);
     const inverseDistance = REFERENCE_DISTANCE / Math.max(distance, REFERENCE_DISTANCE);
     const fadeOut = 1 - smoothstep(FADE_OUT_START, FADE_OUT_END, distance);
     g.reach.to(inverseDistance * fadeOut * lerp(0.42, 1, size), t, MIX_TC);
 
     // ---- prop noise and prop wash ------------------------------------------------------------------
     const rms = Math.sqrt(thrust);
-    const hiss = armed ? Math.pow(thrust, 0.75) * (ducted ? NOISE_DUCTED : NOISE_OPEN) : 0;
+    // The √spin term is bearing and windage noise: it is what is left of the hiss at idle, where thrust is nil.
+    const hiss = armed ? (0.06 * Math.sqrt(Math.min(spin, 1)) + Math.pow(thrust, 0.75)) * (ducted ? NOISE_DUCTED : NOISE_OPEN) : 0;
     g.noiseLevel.to(hiss, t, armed ? 0.03 : DISARM_TC);
     const band = (2200 + 3000 * Math.min(rms, 1)) * (ducted ? 1.2 : 1) * lerp(1.25, 1, size) * doppler;
     g.noiseBand.to(Math.min(band, 8000, g.nyquist * 0.9), t, 0.04);
-    g.rumbleTone.to(lerp(420, 190, size), t, MIX_TC);
+    g.rumbleTone.to(lerp(260, 110, size), t, MIX_TC);
     g.rumbleLevel.to(propwash * RUMBLE_LEVEL * (0.4 + 0.6 * Math.min(spin, 1)), t, MIX_TC);
 
     // ---- wind --------------------------------------------------------------------------------------
@@ -982,16 +987,16 @@ export class AudioEngine {
     const at = g.ctx.currentTime + LEAD;
     switch (kind) {
       case 'hover':
-        tone(g, 'sine', 2400, 2400, 0, at, 0.022, 0.022, 'pluck');
+        tone(g, 'sine', 2400, 2400, 0, at, 0.022, 0.03, 'pluck');
         break;
       case 'select':
-        tone(g, 'sine', 1300, 1950, 0.03, at, 0.05, 0.05, 'pluck');
+        tone(g, 'sine', 1300, 1950, 0.03, at, 0.05, 0.065, 'pluck');
         break;
       case 'back':
-        tone(g, 'sine', 1100, 740, 0.03, at, 0.05, 0.045, 'pluck');
+        tone(g, 'sine', 1100, 740, 0.03, at, 0.05, 0.06, 'pluck');
         break;
       case 'toggle':
-        tone(g, 'triangle', 1700, 1700, 0, at, 0.03, 0.04, 'pluck');
+        tone(g, 'triangle', 1700, 1700, 0, at, 0.03, 0.055, 'pluck');
         break;
     }
   }

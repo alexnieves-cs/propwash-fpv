@@ -69,3 +69,18 @@ export interface MapDef {
   look: LookSettings;
   build(ctx: WorldCtx, progress: (fraction: number, label: string) => Promise<void>): Promise<BuiltWorld>;
 }
+
+/** Distance from a point to a track's racing line (gate to gate, closed loop, plus the start). */
+export function distanceToTrack(track: TrackDef, x: number, z: number): number {
+  const g = track.gates;
+  let best = Math.hypot(x - track.start.x, z - track.start.z);
+  for (let i = 0; i < g.length; i++) {
+    const a = g[i];
+    const b = g[(i + 1) % g.length];
+    const dx = b.x - a.x;
+    const dz = b.z - a.z;
+    const t = Math.max(0, Math.min(1, ((x - a.x) * dx + (z - a.z) * dz) / (dx * dx + dz * dz || 1)));
+    best = Math.min(best, Math.hypot(x - a.x - dx * t, z - a.z - dz * t));
+  }
+  return best;
+}

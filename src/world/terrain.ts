@@ -36,6 +36,10 @@ export interface TerrainSpec {
   layers: { grass: TexSet; floor: TexSet; rock: TexSet; shore: TexSet };
   /** physical tile size of each layer, metres */
   tile: [number, number, number, number];
+  /** colour multiplier for the grass layer (dry summer grass vs lush alpine) */
+  grassTint?: [number, number, number];
+  /** roughness of each layer; a low value on the paved layer reads as wet */
+  roughness?: [number, number, number, number];
 }
 
 const CHUNKS = 12;
@@ -320,6 +324,8 @@ export class Terrain {
         uNoise: { value: noise },
         uTile: { value: new Vector4(...tile) },
         uWater: { value: waterLevel },
+        uGrassTint: { value: new Vector3(...(this.spec.grassTint ?? [1, 1, 1])) },
+        uLayerRough: { value: new Vector4(...(this.spec.roughness ?? [0.9, 0.9, 0.8, 0.9])) },
       });
       shader.vertexShader = shader.vertexShader
         .replace(
@@ -349,6 +355,8 @@ pwWorldNormal = normalize( mat3( modelMatrix ) * objectNormal );`,
 uniform sampler2D tL0, tL0n, tL1, tL1n, tL2, tL2n, tL3, tL3n, uNoise;
 uniform vec4 uTile;
 uniform float uWater;
+uniform vec3 uGrassTint;
+uniform vec4 uLayerRough;
 varying vec4 vSplat;
 varying vec4 vExtra;
 varying vec3 pwWorldPos;
@@ -393,13 +401,15 @@ float pwRough;`,
 	vec4 b = max( wh - ma, 0.0 ) * step( 0.004, w );
 	b /= b.x + b.y + b.z + b.w + 1e-5;
 
-	vec3 grass = c0.rgb * ( 0.74 + 0.52 * macro );
+	vec3 grass = c0.rgb * uGrassTint * ( 0.74 + 0.52 * macro );
 	grass = mix( grass, grass * vec3( 1.5, 1.22, 0.62 ), smoothstep( 0.48, 0.8, macro2 ) * 0.55 );
 	vec3 floorC = c1.rgb * ( 0.8 + 0.4 * macro );
 	vec3 rockC = c2.rgb * ( 0.82 + 0.36 * macro2 );
 	vec3 col = grass * b.x + floorC * b.y + rockC * b.z + c3.rgb * b.w;
 
-	pwRough = 0.9 - b.z * 0.1;
+	pwRough = dot( b, uLayerRough );
+	// puddled paving: the low spots of the surface texture are the glossy ones
+	pwRough = mix( pwRough, min( pwRough + 0.35, 0.95 ), b.y * smoothstep( 0.35, 0.7, c1.a ) * step( uLayerRough.y, 0.6 ) );
 	col *= mix( 1.0, 0.82 + 0.18 * c0.a, b.x * ( 1.0 - farK ) );
 
 	// normals: planar layers perturb in XZ, rock uses UDN triplanar

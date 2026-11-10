@@ -103,6 +103,9 @@ export class Engine {
   /** dynamic resolution factor, 0.6..1 */
   dynamicScale = 1;
   dynamicResolution = true;
+  /** called once if the frame rate stays poor even at the lowest dynamic resolution */
+  onStruggle: (() => void) | null = null;
+  private struggled = false;
   private frameTimes: number[] = [];
   private lastScaleChange = 0;
   private cssW = 2;
@@ -191,6 +194,10 @@ export class Engine {
     this.frameTimes.length = 0;
     if (this.time - this.lastScaleChange < 2.5) return;
     let next = this.dynamicScale;
+    if (median > 1 / 34 && this.dynamicScale <= 0.61 && !this.struggled) {
+      this.struggled = true;
+      this.onStruggle?.();
+    }
     if (median > 1 / 44) next = Math.max(0.6, this.dynamicScale - 0.1);
     else if (median < 1 / 58 && this.dynamicScale < 1) next = Math.min(1, this.dynamicScale + 0.05);
     if (next !== this.dynamicScale) {

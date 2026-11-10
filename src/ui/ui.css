@@ -129,10 +129,10 @@ kbd {
   bottom: 0;
   left: 0;
   width: min(430px, 100vw);
-  padding: clamp(20px, 4.2vh, 44px) 30px 22px 44px;
+  padding: clamp(18px, 3.6vh, 44px) 30px 22px 44px;
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 16px;
 }
 
 .column--wide {
@@ -190,7 +190,7 @@ kbd {
 }
 
 .group {
-  margin-top: 20px;
+  margin-top: 16px;
 }
 
 .group:first-child {
@@ -220,7 +220,7 @@ kbd {
   grid-template-columns: 14px 1fr auto;
   align-items: center;
   gap: 4px 10px;
-  padding: 8px 12px 8px 10px;
+  padding: 7px 12px 7px 10px;
   border: 0;
   border-radius: 7px;
   background: transparent;
@@ -801,6 +801,10 @@ input[type='range']::-moz-range-thumb {
   background: var(--bad);
   color: #1c0402;
   box-shadow: none;
+}
+
+.sep {
+  margin: 0 -0.2em;
 }
 
 .readouts {

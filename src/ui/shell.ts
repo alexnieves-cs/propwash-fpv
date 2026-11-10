@@ -6,7 +6,7 @@ import { MAPS } from '../maps';
 import { QUALITY, type QualityId } from '../render/engine';
 import { DRONES } from '../sim/drone-config';
 import { h } from './dom';
-import { Hud } from './hud';
+import { Hud, clock } from './hud';
 
 type ScreenId = 'loading' | 'menu' | 'settings' | 'controls' | 'pause' | 'results';
 
@@ -124,6 +124,7 @@ export class Shell {
   private loadPct = h('span');
   private lastResult: RaceResult | null = null;
   private previousBest: number | null = null;
+  private firstRun = false;
 
   constructor(private root: HTMLElement, private game: Game, private store: SettingsStore) {
     this.hud = new Hud(game);
@@ -166,7 +167,12 @@ export class Shell {
     else if (s === 'menu') this.open('menu');
     else if (s === 'paused') this.open('pause');
     else if (s === 'results') this.open('results');
-    else if (s === 'flying') this.open(null);
+    else if (s === 'flying') {
+      this.open(null);
+      // hand keyboard focus back to the view so no hidden button swallows Space
+      (document.activeElement as HTMLElement | null)?.blur();
+      document.getElementById('view')?.focus({ preventScroll: true });
+    }
   }
 
   private open(id: ScreenId | null): void {
@@ -180,7 +186,8 @@ export class Shell {
   }
 
   private onKey(e: KeyboardEvent): void {
-    if (!this.current || this.current === 'loading') return;
+    // the flight controls saw this key first (Esc to pause): don't also act on it here
+    if (e.defaultPrevented || !this.current || this.current === 'loading') return;
     const t = e.target as HTMLElement;
     if (e.code === 'Escape') {
       e.preventDefault();
@@ -192,8 +199,16 @@ export class Shell {
       if (this.current === 'menu') this.fly();
       else if (this.current === 'pause') this.game.resume();
       else if (this.current === 'results') this.game.restart();
-      else if (this.current === 'controls') this.goBack();
+      else if (this.current === 'controls') {
+        if (this.firstRun) this.takeOff();
+        else this.goBack();
+      }
     }
+  }
+
+  private takeOff(): void {
+    this.firstRun = false;
+    this.game.fly();
   }
 
   private goBack(): void {
@@ -206,6 +221,7 @@ export class Shell {
     if (!this.store.data.seenIntro) {
       this.store.update((s) => (s.seenIntro = true));
       this.back = 'menu';
+      this.firstRun = true;
       this.renderControls(true);
       this.current = 'controls';
       for (const [key, el] of Object.entries(this.screens)) el.toggleAttribute('data-open', key === 'controls');
@@ -286,9 +302,9 @@ export class Shell {
         { class: 'note' },
         h('b', null, track.name),
         ` · ${track.gates.length} gates · ${track.laps} ${track.laps === 1 ? 'lap' : 'laps'}. `,
-        rec ? h('span', null, 'Your best ', h('span', { class: 'mono' }, formatTime(rec.total)), '.') : 'No time set yet.',
+        rec ? h('span', null, 'Your best ', h('span', { class: 'mono' }, clock(formatTime(rec.total))), '.') : 'No time set yet.',
         ' Gold is ',
-        h('span', { class: 'mono' }, formatTime(track.medals[0])),
+        h('span', { class: 'mono' }, clock(formatTime(track.medals[0]))),
         '.',
       );
     } else {
@@ -547,7 +563,7 @@ export class Shell {
           'footer',
           { class: 'actions' },
           first
-            ? h('button', { class: 'btn btn--primary', onclick: () => this.game.fly() }, 'Take off', h('kbd', null, 'Enter'))
+            ? h('button', { class: 'btn btn--primary', onclick: () => this.takeOff() }, 'Take off', h('kbd', null, 'Enter'))
             : h('button', { class: 'btn', onclick: this.click(() => this.goBack(), 'back') }, 'Done', h('kbd', null, 'Esc')),
         ),
       ),
@@ -605,13 +621,13 @@ export class Shell {
         h(
           'div',
           null,
-          h('div', { class: 'result-time' }, formatTime(r.total)),
+          h('div', { class: 'result-time' }, clock(formatTime(r.total))),
           h('div', { class: 'medal', 'data-medal': r.medal }, h('i'), MEDALS[r.medal]),
           margin,
           h(
             'ul',
             { class: 'laps' },
-            ...r.laps.map((t, i) => h('li', t === r.bestLap && r.laps.length > 1 ? { 'data-best': '' } : null, h('span', null, `Lap ${i + 1}`), h('span', null, formatTime(t)))),
+            ...r.laps.map((t, i) => h('li', t === r.bestLap && r.laps.length > 1 ? { 'data-best': '' } : null, h('span', null, `Lap ${i + 1}`), h('span', null, clock(formatTime(t))))),
           ),
         ),
         h(

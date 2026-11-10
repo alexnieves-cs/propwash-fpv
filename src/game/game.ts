@@ -108,6 +108,10 @@ export class Game {
   gates: GateRuntime[] = [];
   /** for automated testing: when set, replaces the pilot's sticks */
   rcOverride: RcCommand | null = null;
+  /** for automated testing: leave the camera wherever it has been put */
+  freeCamera = false;
+  /** pause when the tab is hidden; tests switch this off */
+  autoPause = true;
 
   private physics: PhysicsWorld | null = null;
   private root: Group | null = null;
@@ -157,8 +161,11 @@ export class Game {
       if (total > (settings.data.bestCombo[key] ?? 0)) settings.update((s) => (s.bestCombo[key] = Math.round(total)));
     };
     settings.subscribe(() => this.applySettings());
+    engine.onStruggle = () => {
+      if (this.state === 'flying' && !document.hidden) this.say('Running slow — try a lower Graphics quality in Settings › Display', 'warn', 6000);
+    };
     document.addEventListener('visibilitychange', () => {
-      if (document.hidden && this.state === 'flying') this.pause();
+      if (document.hidden && this.state === 'flying' && this.autoPause) this.pause();
     });
   }
 
@@ -229,6 +236,8 @@ export class Game {
     if (this.track) this.gates = buildGates(ctx, kit, this.track.gates, world.heightAt).gates;
     this.buildPad(kit, world);
     kit.build();
+    // one step so the new colliders answer the ray casts that place the quad
+    physics.step();
 
     // airframe
     await progress(0.94, 'Plugging in a fresh pack');
@@ -315,7 +324,7 @@ export class Game {
   }
 
   private buildPad(kit: Kit, world: BuiltWorld): void {
-    const mat = kit.mat('pad', 'asphalt', { color: 0x9aa0a6, tile: 1.2, roughness: 0.9 });
+    const mat = kit.mat('pad', 'fabric', { color: 0x34373b, tile: 0.35, roughness: 0.92 });
     const edge = kit.mat('pad-edge', null, { color: 0x111214, emissive: 0xff5a1f, emissiveIntensity: 0.9 });
     const pts = [{ x: world.spawn.pos.x, z: world.spawn.pos.z, heading: world.spawn.heading }];
     if (this.track) pts.push(this.track.start);
@@ -709,6 +718,10 @@ export class Game {
   }
 
   private updateCamera(dt: number, snap: boolean): void {
+    if (this.freeCamera) {
+      this.model!.group.visible = true;
+      return;
+    }
     const q = this.quad!;
     const cam = this.engine.camera;
     const s = this.settings.data;
