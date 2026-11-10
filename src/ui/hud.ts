@@ -146,7 +146,7 @@ export class Hud {
     this.volts.replaceChildren(clock(t.cellVolts.toFixed(2)));
     this.cellFill.style.transform = `scaleX(${t.battery.toFixed(3)})`;
     this.draw.textContent = s.sim.battery ? `${Math.round(t.mah)} mAh · ${Math.round(t.current)} A` : `${Math.round(t.current)} A`;
-    const batt = !s.sim.battery ? 'ok' : t.cellVolts < 3.3 ? 'critical' : t.cellVolts < 3.5 ? 'low' : 'ok';
+    const batt = t.batteryAlert === 2 ? 'critical' : t.batteryAlert === 1 ? 'low' : 'ok';
     this.el.setAttribute('data-batt', batt);
     this.el.toggleAttribute('data-minimal', s.hud.minimal);
 
@@ -177,7 +177,7 @@ export class Hud {
     else if (t.raceState === 'countdown') this.setPrompt('hold', ['Hold steady — launch on the tone']);
     else if (t.landed && s.controls.throttle === 'spring') this.setPrompt('lift', [['W'], 'take off', ['S'], 'descend']);
     else if (t.landed) this.setPrompt('lift2', [['W'], 'raise throttle']);
-    else if (s.sim.battery && t.cellVolts < 3.3) this.setPrompt('land', ['Battery critical — land now']);
+    else if (t.batteryAlert === 2) this.setPrompt('land', ['Battery critical — land now']);
     else this.setPrompt('', []);
   }
 

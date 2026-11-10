@@ -25,6 +25,8 @@ const SOC_CURVE = [3.27, 3.5, 3.62, 3.7, 3.75, 3.79, 3.83, 3.87, 3.93, 4.0, 4.08
 const SOC_KEYS = [0, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1];
 
 function cellVoltage(soc: number): number {
+  // past empty the cells collapse quickly: there is no flying on a flat pack
+  if (soc < 0) return Math.max(2.5, SOC_CURVE[0] + soc * 7);
   const s = saturate(soc);
   for (let i = 1; i < SOC_KEYS.length; i++) {
     if (s <= SOC_KEYS[i]) {
@@ -178,6 +180,11 @@ export class Quad {
 
   get cellVolts(): number {
     return this.voltage / this.cfg.battery.cells;
+  }
+
+  /** Per-cell voltage with the load sag taken back out — what the pack would read at rest. */
+  get restCellVolts(): number {
+    return (this.voltage + this.current * this.cfg.battery.resistance) / this.cfg.battery.cells;
   }
 
   private readBody(): void {

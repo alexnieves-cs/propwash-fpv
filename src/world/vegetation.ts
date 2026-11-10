@@ -578,17 +578,50 @@ export class Forest {
   }
 }
 
-/** Solid trunks and crowns for the trees a pilot can actually reach. */
+/**
+ * Solid trunks and crowns for the trees a pilot can actually reach.
+ *
+ * Thousands of individual colliders make every physics step re-index them all, so the whole
+ * forest goes in as ONE static triangle mesh: a six-sided prism per trunk and a six-sided cone
+ * per crown. The mesh has its own acceleration structure and costs nothing while you're not
+ * touching it.
+ */
 export function addPlantColliders(physics: PhysicsWorld, species: Species[], plants: PlantInstance[], maxRadius: number): void {
+  const verts: number[] = [];
+  const idx: number[] = [];
+  const SIDES = 6;
   for (const p of plants) {
     const c = species[p.species].collider;
     if (!c || Math.hypot(p.x, p.z) > maxRadius) continue;
     const s = p.scale;
-    const hh = (c.height * s) / 2;
-    physics.addCylinder(p.x, p.y + hh, p.z, hh, c.trunkR * s, undefined, { friction: 0.9, restitution: 0.15 });
+    const ring = (y: number, r: number): number => {
+      const first = verts.length / 3;
+      for (let k = 0; k < SIDES; k++) {
+        const a = (k / SIDES) * Math.PI * 2 + p.rot;
+        verts.push(p.x + Math.cos(a) * r, y, p.z + Math.sin(a) * r);
+      }
+      return first;
+    };
+    // trunk
+    const b0 = ring(p.y - 0.5, c.trunkR * s);
+    const b1 = ring(p.y + c.height * s, c.trunkR * s * 0.5);
+    for (let k = 0; k < SIDES; k++) {
+      const n = (k + 1) % SIDES;
+      idx.push(b0 + k, b1 + k, b0 + n, b0 + n, b1 + k, b1 + n);
+    }
+    // crown
     if (c.crownR > 0) {
-      const ch = (c.crownH * s) / 2;
-      physics.addCone(p.x, p.y + c.crownY * s + ch, p.z, ch, c.crownR * s, undefined, { friction: 1, restitution: 0.05 });
+      const y0 = p.y + c.crownY * s;
+      const r0 = ring(y0, c.crownR * s);
+      const apex = verts.length / 3;
+      verts.push(p.x, y0 + c.crownH * s, p.z);
+      const centre = verts.length / 3;
+      verts.push(p.x, y0, p.z);
+      for (let k = 0; k < SIDES; k++) {
+        const n = (k + 1) % SIDES;
+        idx.push(r0 + k, apex, r0 + n, r0 + n, centre, r0 + k);
+      }
     }
   }
+  if (idx.length) physics.addTrimesh(new Float32Array(verts), new Uint32Array(idx), { friction: 0.95, restitution: 0.1 });
 }

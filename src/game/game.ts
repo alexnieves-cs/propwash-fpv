@@ -46,6 +46,8 @@ export interface Telemetry {
   agl: number;
   throttle: number;
   cellVolts: number;
+  /** 0 fine, 1 low, 2 land now */
+  batteryAlert: number;
   battery: number;
   current: number;
   mah: number;
@@ -146,7 +148,7 @@ export class Game {
     this.input.onAction = (a) => this.handleAction(a);
     this.cfg = getDrone(settings.data.drone);
     this.telemetry = {
-      speed: 0, climb: 0, altitude: 0, agl: 0, throttle: 0, cellVolts: 4.2, battery: 1, current: 0, mah: 0, gForce: 1, heading: 0, pitch: 0, roll: 0,
+      speed: 0, climb: 0, altitude: 0, agl: 0, throttle: 0, cellVolts: 4.2, batteryAlert: 0, battery: 1, current: 0, mah: 0, gForce: 1, heading: 0, pitch: 0, roll: 0,
       armed: false, crashed: false, landed: true, link: 1, propwash: 0, distance: 0, fps: 60, raceTime: 0, raceState: 'idle', lap: 0, laps: 0,
       gatesPassed: 0, gatesTotal: 0, delta: null, countdown: 0, gateX: 0, gateY: 0, gateVisible: false, gateDistance: 0, hasGate: false,
       score: 0, combo: 0, comboCount: 0, multiplier: 1, comboLeft: 0, best: null,
@@ -833,10 +835,11 @@ export class Game {
       dt,
     );
     // battery alarm
-    if (q.fc.armed && !q.unlimitedBattery && q.cellVolts < 3.5) {
+    // judged on the resting voltage, so a punch-out on a healthy pack doesn't set it off
+    if (q.fc.armed && !q.unlimitedBattery && q.restCellVolts < 3.62) {
       this.lowBattTimer -= dt;
       if (this.lowBattTimer <= 0) {
-        this.lowBattTimer = q.cellVolts < 3.3 ? 0.7 : 2.2;
+        this.lowBattTimer = q.restCellVolts < 3.45 ? 0.7 : 2.2;
         this.audio.lowBattery();
       }
     }
@@ -852,6 +855,7 @@ export class Game {
     t.agl = q.agl;
     t.throttle = q.fc.armed ? saturate((q.fc.collective - this.cfg.idle) / (1 - this.cfg.idle)) : 0;
     t.cellVolts = q.cellVolts;
+    t.batteryAlert = q.unlimitedBattery ? 0 : q.restCellVolts < 3.45 ? 2 : q.restCellVolts < 3.62 ? 1 : 0;
     t.battery = q.unlimitedBattery ? 1 : saturate(q.soc);
     t.current = q.current;
     t.mah = q.usedMah;
