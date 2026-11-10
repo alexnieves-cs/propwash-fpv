@@ -85,9 +85,9 @@ float ground( vec2 xz ) {
 }
 float waves( vec2 p ) {
 	float t = uTime;
-	float h = pwNoise( p * 0.012 + vec2( t * 0.012, t * 0.007 ) ) * 0.55;
-	h += pwNoise( p * 0.031 - vec2( t * 0.021, -t * 0.016 ) ) * 0.3;
-	h += pwNoise( p * 0.083 + vec2( -t * 0.03, t * 0.041 ) ) * 0.15;
+	float h = pwNoise( p * 0.0045 + vec2( t * 0.006, t * 0.004 ) ) * 0.5;
+	h += pwNoise( p * 0.017 - vec2( t * 0.016, -t * 0.012 ) ) * 0.32;
+	h += pwNoise( p * 0.052 + vec2( -t * 0.026, t * 0.034 ) ) * 0.18;
 	return h;
 }
 void main() {
@@ -96,12 +96,14 @@ void main() {
 	float depth = uLevel - ground( vWorld.xz );
 
 	// ripple normal, calmed with distance and in the lee of the shore
-	float e = 0.35;
+	float e = 0.22;
 	float calm = smoothstep( 0.0, 1.6, depth ) * ( 1.0 - smoothstep( 120.0, 900.0, dist ) * 0.65 );
 	float h0 = waves( vWorld.xz );
 	float hx = waves( vWorld.xz + vec2( e, 0.0 ) );
 	float hz = waves( vWorld.xz + vec2( 0.0, e ) );
-	vec3 N = normalize( vec3( ( h0 - hx ) * 2.4 * calm, e, ( h0 - hz ) * 2.4 * calm ) );
+	// ripples flatten out towards the horizon, where they are smaller than a pixel
+	float amp = 0.5 * calm / ( 1.0 + dist * 0.012 );
+	vec3 N = normalize( vec3( ( h0 - hx ) * amp, e, ( h0 - hz ) * amp ) );
 	if ( V.y < 0.0 ) N = -N;
 
 	float ndv = max( dot( N, V ), 0.0 );
