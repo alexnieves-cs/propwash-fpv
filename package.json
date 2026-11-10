@@ -1,0 +1,27 @@
+{
+  "name": "propwash-fpv",
+  "version": "1.0.0",
+  "private": true,
+  "description": "PROPWASH — a physically-based FPV drone simulator that runs in the browser.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "start": "vite --open",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@dimforge/rapier3d-compat": "^0.21.0",
+    "@fontsource-variable/archivo": "^5.3.0",
+    "@fontsource/b612-mono": "^5.3.0",
+    "three": "^0.187.0"
+  },
+  "devDependencies": {
+    "@types/three": "^0.187.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.7",
+    "vitest": "^4.1.12"
+  }
+}
