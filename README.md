@@ -1,12 +1,21 @@
 # Propwash
 
+[![ci](https://github.com/alexnieves-cs/propwash-fpv/actions/workflows/ci.yml/badge.svg)](https://github.com/alexnieves-cs/propwash-fpv/actions/workflows/ci.yml)
+[![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+![A Vandal 5″ freestyle quad climbing off the pad at Larkspur Valley and flying out over the lake, chase camera](docs/media/hero.gif)
+
+<sub>7.5 s of real flight captured from the running app in headless Chromium (software GL, Medium preset), one sim frame per GIF frame. [MP4](docs/media/hero.mp4).</sub>
+
+**[Live demo](https://alexnieves-cs.github.io/propwash-fpv/)** · sibling projects: [frontier-fly](https://github.com/alexnieves-cs/frontier-fly), [drift-school](https://github.com/alexnieves-cs/drift-school)
+
 An FPV drone simulator that runs in the browser. It models a real quadcopter — four motors, props, a battery and a Betaflight-style flight controller — and puts it in three hand-built worlds you can fly with nothing but a laptop keyboard.
 
 *Prop wash* is the turbulent air a quad falls through when it descends into its own wake. It is simulated here, which is where the name comes from.
 
 ## Run it
 
-You need [Node.js](https://nodejs.org) 20 or newer.
+The quickest way is the [live demo](https://alexnieves-cs.github.io/propwash-fpv/) (it downloads about 2 MB gzipped, most of it the Rapier physics engine). To run it locally you need [Node.js](https://nodejs.org) 20 or newer.
 
 ```bash
 npm install
@@ -73,6 +82,12 @@ A tap on a key is a small nudge; holding it pushes the virtual stick to full def
 - **The Ironworks** — an abandoned concrete works: a gutted hall you can fly through, silos, a chimney, stacked containers. Course: *Ironworks*.
 - **Apron Nine** — an airfield at night under sodium floodlights, with two hangars and a parked freighter. Course: *Night Shift*.
 
+| Larkspur Valley | The Ironworks | Apron Nine |
+| --- | --- | --- |
+| ![Larkspur Valley](docs/media/larkspur-valley.jpg) | ![The Ironworks](docs/media/ironworks.jpg) | ![Apron Nine](docs/media/apron-nine.jpg) |
+
+<sub>Captured from the running app in headless Chromium with software GL (SwiftShader) at the Medium preset, chase camera, a few seconds after take-off. A real GPU at High looks better.</sub>
+
 ## How it works
 
 **Flight model** (`src/sim`). The quad is a rigid body in [Rapier](https://rapier.rs), stepped at 500 Hz. Each motor has its own spin-up lag; thrust goes with rotor speed squared and falls off with air flowing through the disc, which is what sets the top speed. The model also includes rotor drag, rotor reaction torque (which is what makes yaw work), airframe drag, ground effect, prop wash, wind gusts, and a LiPo pack whose voltage sags under load and runs down. The flight controller turns sticks into rate setpoints with Betaflight "Actual" rates, runs a PID and feed-forward rate loop, and mixes with airmode.
@@ -99,7 +114,14 @@ tests/      flight-model and trick-scoring tests
 npm run dev        # dev server with hot reload
 npm test           # flight-model and trick-scoring tests
 npm run typecheck
-npm run build      # production build in dist/
+npm run build      # production build in dist/ (relative paths)
+npm run build:pages  # the GitHub Pages build, served from /propwash-fpv/
 ```
 
+CI runs the typecheck, the tests and the build on every push and pull request. Every push to `main` deploys the live demo to GitHub Pages.
+
 Graphics quality is under Settings › Display. If the frame rate is low, drop it a step; the default also lowers render resolution on its own when it has to.
+
+## License
+
+MIT. See [LICENSE](LICENSE).

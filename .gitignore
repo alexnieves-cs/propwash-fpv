@@ -3,3 +3,6 @@ dist
 .DS_Store
 *.log
 .vite
+
+# local agent/editor config
+.claude/
