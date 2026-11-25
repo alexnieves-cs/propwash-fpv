@@ -53,6 +53,14 @@ Two hands, two sticks, like a real radio in Mode 2.
 
 A tap on a key is a small nudge; holding it pushes the virtual stick to full deflection. A gamepad or a USB radio is picked up automatically.
 
+### Radio and gamepad
+
+Settings › Radio sets up a gamepad or a radio plugged in as a USB joystick. It has presets for standard gamepads (Mode 1 and Mode 2) and for EdgeTX radios in Classic joystick mode (AETR and TAER channel order), and a calibrate-yourself preset for anything else. Each stick can be assigned by moving it (Detect), inverted and calibrated for centre and endpoints. There is a deadband, a throttle style, and an arm switch and a flight-mode switch. The setup is saved in the browser. With no changes, a gamepad works exactly as in 1.0, and the keyboard is unaffected.
+
+### Rates and tuning
+
+Settings › Tuning keeps rates and rate-loop settings per airframe. Rates are entered in Betaflight's CLI units for any of its five rate types (Betaflight, Raceflight, KISS, Actual, Quick), with a curve plot and the centre and maximum rate per axis. Paste the output of `diff` or `dump` from the Betaflight CLI to import your own rates, or copy the sim's back out as CLI lines. The curves are ported from Betaflight 4.5.1. An airframe you haven't tuned flies exactly as in 1.0.
+
 ### Flight modes
 
 - **Cruise** levels itself and holds altitude. Start here.
@@ -90,7 +98,7 @@ A tap on a key is a small nudge; holding it pushes the virtual stick to full def
 
 ## How it works
 
-**Flight model** (`src/sim`). The quad is a rigid body in [Rapier](https://rapier.rs), stepped at 500 Hz. Each motor has its own spin-up lag; thrust goes with rotor speed squared and falls off with air flowing through the disc, which is what sets the top speed. The model also includes rotor drag, rotor reaction torque (which is what makes yaw work), airframe drag, ground effect, prop wash, wind gusts, and a LiPo pack whose voltage sags under load and runs down. The flight controller turns sticks into rate setpoints with Betaflight "Actual" rates, runs a PID and feed-forward rate loop, and mixes with airmode.
+**Flight model** (`src/sim`). The quad is a rigid body in [Rapier](https://rapier.rs), stepped at 500 Hz. Each motor has its own spin-up lag; thrust goes with rotor speed squared and falls off with air flowing through the disc, which is what sets the top speed. The model also includes rotor drag, rotor reaction torque (which is what makes yaw work), airframe drag, ground effect, prop wash, wind gusts, and a LiPo pack whose voltage sags under load and runs down. The flight controller turns sticks into rate setpoints with Betaflight "Actual" rates (or any Betaflight rate type set in Settings › Tuning), runs a PID and feed-forward rate loop, and mixes with airmode. [docs/PHYSICS-CHECK.md](docs/PHYSICS-CHECK.md) compares the airframes with published motor and prop thrust data.
 
 **Rendering** (`src/render`, `src/world`). Built on [three.js](https://threejs.org) with a custom HDR pipeline: an atmosphere integrated once per map that drives the sky, the image-based lighting and the colour of distance haze; camera-centred cascaded shadows; ambient occlusion; aerial perspective with drifting cloud shadows; bloom; depth-reprojected motion blur; lens distortion; ACES tone mapping. Terrain is a continuous height field with four height-blended material layers. Trees are procedural, with three levels of detail down to baked impostors. Every texture is synthesised on the GPU at start-up.
 
@@ -105,14 +113,16 @@ src/
   game/     game loop, race logic, trick scoring
   core/     input, audio, settings, maths
   ui/       HUD and menus
-tests/      flight-model and trick-scoring tests
+tests/      flight-model, trick-scoring, radio, rates and settings tests
+bench/      simulation step cost
 ```
 
 ## Development
 
 ```bash
 npm run dev        # dev server with hot reload
-npm test           # flight-model and trick-scoring tests
+npm test           # flight-model, trick-scoring, radio and rates tests
+npm run bench      # cost of one simulation step, in Node
 npm run typecheck
 npm run build      # production build in dist/ (relative paths)
 npm run build:pages  # the GitHub Pages build, served from /propwash-fpv/
@@ -121,6 +131,8 @@ npm run build:pages  # the GitHub Pages build, served from /propwash-fpv/
 CI runs the typecheck, the tests and the build on every push and pull request. Every push to `main` deploys the live demo to GitHub Pages.
 
 Graphics quality is under Settings › Display. If the frame rate is low, drop it a step; the default also lowers render resolution on its own when it has to.
+
+Step-cost results and the machine they came from are in [docs/PERFORMANCE.md](docs/PERFORMANCE.md). What changed in each release is in [CHANGELOG.md](CHANGELOG.md), and the 1.1 plan is in [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## License
 
