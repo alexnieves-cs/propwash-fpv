@@ -7,6 +7,7 @@ import { QUALITY, type QualityId } from '../render/engine';
 import { DRONES } from '../sim/drone-config';
 import { h } from './dom';
 import { Hud, clock } from './hud';
+import { RadioPanel, TuningPanel } from './setup';
 
 type ScreenId = 'loading' | 'menu' | 'settings' | 'controls' | 'pause' | 'results';
 
@@ -49,7 +50,7 @@ const TABS: { id: string; label: string; fields: Field[] }[] = [
           ['hold', 'Hold'],
         ],
       },
-      { kind: 'range', label: 'Rates', help: 'How fast full stick rotates the quad, relative to the airframe’s own tune.', get: (s) => s.controls.rateScale, set: (s, v) => (s.controls.rateScale = v), min: 0.5, max: 1.5, step: 0.05, fmt: pct },
+      { kind: 'range', label: 'Rates', help: 'How fast full stick rotates the quad, relative to the airframe’s rates (stock, or yours from the Tuning tab).', get: (s) => s.controls.rateScale, set: (s, v) => (s.controls.rateScale = v), min: 0.5, max: 1.5, step: 0.05, fmt: pct },
       { kind: 'range', label: 'Key response', help: 'How quickly a held key reaches full stick. Lower is smoother, higher is twitchier.', get: (s) => s.controls.keyResponse, set: (s, v) => (s.controls.keyResponse = v), min: 0.5, max: 2, step: 0.05, fmt: pct },
       { kind: 'toggle', label: 'Trackpad as right stick', help: 'Move the pointer to pitch and roll; click to centre. Press M in flight to switch.', get: (s) => s.controls.mouseStick, set: (s, v) => (s.controls.mouseStick = v) },
       { kind: 'range', label: 'Trackpad sensitivity', get: (s) => s.controls.mouseSensitivity, set: (s, v) => (s.controls.mouseSensitivity = v), min: 0.3, max: 3, step: 0.1, fmt: pct },
@@ -100,6 +101,9 @@ const TABS: { id: string; label: string; fields: Field[] }[] = [
       { kind: 'toggle', label: 'Artificial horizon', get: (s) => s.hud.horizon, set: (s, v) => (s.hud.horizon = v) },
     ],
   },
+  // these two draw their own content (src/ui/setup.ts)
+  { id: 'radio', label: 'Radio', fields: [] },
+  { id: 'tuning', label: 'Tuning', fields: [] },
   {
     id: 'sound',
     label: 'Sound',
@@ -125,9 +129,16 @@ export class Shell {
   private lastResult: RaceResult | null = null;
   private previousBest: number | null = null;
   private firstRun = false;
+  private radioPanel: RadioPanel;
+  private tuningPanel: TuningPanel;
 
   constructor(private root: HTMLElement, private game: Game, private store: SettingsStore) {
     this.hud = new Hud(game);
+    const redraw = (): void => {
+      if (this.current === 'settings') this.renderSettings();
+    };
+    this.radioPanel = new RadioPanel(store, game, redraw);
+    this.tuningPanel = new TuningPanel(store, redraw);
     root.append(this.hud.el);
     for (const id of ['loading', 'menu', 'settings', 'controls', 'pause', 'results'] as ScreenId[]) {
       const el = h('section', { class: `screen screen--${id}` });
@@ -194,7 +205,7 @@ export class Shell {
       if (this.current === 'settings' || this.current === 'controls') this.goBack();
       else if (this.current === 'pause') this.game.resume();
       else if (this.current === 'results') this.game.toMenu();
-    } else if (e.code === 'Enter' && t.tagName !== 'BUTTON') {
+    } else if (e.code === 'Enter' && t.tagName !== 'BUTTON' && t.tagName !== 'TEXTAREA' && t.tagName !== 'INPUT' && t.tagName !== 'SELECT') {
       e.preventDefault();
       if (this.current === 'menu') this.fly();
       else if (this.current === 'pause') this.game.resume();
@@ -388,6 +399,9 @@ export class Shell {
   private renderSettings(): void {
     const tab = TABS.find((t) => t.id === this.tab) ?? TABS[0];
     const s = this.store.data;
+    const scroll = this.screens.settings.querySelector('.scroll');
+    const scrollTop = scroll && this.screens.settings.getAttribute('data-tab') === tab.id ? scroll.scrollTop : 0;
+    const custom = tab.id === 'radio' ? this.radioPanel.render() : tab.id === 'tuning' ? this.tuningPanel.render() : null;
     const fields = tab.fields
       .filter((f) => !(f.label === 'Camera tilt' && s.camera.tilt === null))
       .map((f) => {
@@ -474,25 +488,32 @@ export class Shell {
             ),
           ),
         ),
-        h('div', { class: 'scroll' }, ...fields),
+        h('div', { class: 'scroll' }, ...(custom ?? fields)),
         h(
           'footer',
           { class: 'actions' },
           h('button', { class: 'btn', onclick: this.click(() => this.goBack(), 'back') }, 'Done', h('kbd', null, 'Esc')),
-          h(
-            'button',
-            {
-              class: 'btn btn--quiet',
-              onclick: this.click(() => {
-                this.store.reset();
-                this.renderSettings();
-              }),
-            },
-            'Restore defaults',
-          ),
+          custom
+            ? null
+            : h(
+                'button',
+                {
+                  class: 'btn btn--quiet',
+                  title: 'Radio setup and airframe tunes are kept: reset those in their own tabs.',
+                  onclick: this.click(() => {
+                    this.store.reset();
+                    this.renderSettings();
+                  }),
+                },
+                'Restore defaults',
+              ),
         ),
       ),
     );
+    this.screens.settings.setAttribute('data-tab', tab.id);
+    // keep the scroll position when a tab redraws itself after an edit
+    const next = this.screens.settings.querySelector('.scroll');
+    if (next) next.scrollTop = scrollTop;
   }
 
   private renderControls(first = false): void {
@@ -527,7 +548,7 @@ export class Shell {
               h('dl', { class: 'keys' }, ...line(['↑', '↓'], h('b', null, 'Pitch'), ' — nose down / up'), ...line(['←', '→'], h('b', null, 'Roll'), ' — bank left / right')),
             ),
           ),
-          h('p', { class: 'note' }, 'A tap is a nudge; holding a key pushes the stick all the way. Hold ', h('kbd', null, 'Shift'), ' for fine control. A gamepad or radio works too.'),
+          h('p', { class: 'note' }, 'A tap is a nudge; holding a key pushes the stick all the way. Hold ', h('kbd', null, 'Shift'), ' for fine control. A gamepad or radio works too: map and calibrate it in Settings › Radio.'),
           h('hr', { class: 'hr' }),
           h(
             'dl',
@@ -643,5 +664,6 @@ export class Shell {
 
   frame(): void {
     if (this.game.state === 'flying') this.hud.update(this.store.data);
+    else if (this.current === 'settings' && this.tab === 'radio') this.radioPanel.tick();
   }
 }
