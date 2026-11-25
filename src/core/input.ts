@@ -1,6 +1,7 @@
 import type { RcCommand } from '../sim/flight-controller';
 import { approach, clamp } from './math';
-import type { SettingsStore } from './settings';
+import { SwitchLatch, readModeSwitch, readSticks, readSwitch, sanitizeRadio, type RadioProfile } from './radio';
+import type { FlightModeId, SettingsStore } from './settings';
 
 export type Action =
   | 'arm'
@@ -23,7 +24,9 @@ export type Action =
   | 'fovUp'
   | 'fovDown'
   | 'mouse'
-  | 'help';
+  | 'help'
+  /** the radio's arm switch was flipped on with the throttle up, so it was ignored */
+  | 'armBlocked';
 
 /** One-shot actions and the keys that fire them. */
 const ACTION_KEYS: Record<string, Action> = {
@@ -51,6 +54,19 @@ const ACTION_KEYS: Record<string, Action> = {
   Tab: 'help',
 };
 
+const MODE_ACTIONS: Record<FlightModeId, Action> = { cruise: 'mode1', angle: 'mode2', horizon: 'mode3', acro: 'mode4' };
+
+/** v1.0 gamepad buttons (standard mapping): A, B, X, Y, the bumpers and Start. */
+const PAD_BUTTONS: [number, Action][] = [
+  [0, 'arm'],
+  [1, 'reset'],
+  [2, 'turtle'],
+  [3, 'camera'],
+  [4, 'rollLeft'],
+  [5, 'rollRight'],
+  [9, 'pause'],
+];
+
 const FLIGHT_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'KeyI', 'KeyJ', 'KeyK', 'KeyL', 'ShiftLeft', 'ShiftRight']);
 
 export interface InputContext {
@@ -65,6 +81,9 @@ export interface InputContext {
  *
  * Keys are on/off, sticks are not — so each held key drives a virtual stick that travels towards
  * full deflection and springs back on release. A tap is a nudge, a hold is a full-rate roll.
+ *
+ * A gamepad or USB radio is read through the mapping and calibration in Settings > Radio
+ * (`src/core/radio.ts`); the default mapping is the v1.0 one.
  */
 export class Input {
   enabled = false;
@@ -88,6 +107,10 @@ export class Input {
   private mouseX = 0;
   private mouseY = 0;
   private padButtons: boolean[] = [];
+  private armLatch = new SwitchLatch<boolean>();
+  private modeLatch = new SwitchLatch<FlightModeId>();
+  private profileSource: unknown = null;
+  private profileCache: RadioProfile | null = null;
 
   constructor(private canvas: HTMLElement, private settings: SettingsStore) {
     window.addEventListener('keydown', this.onKeyDown);
@@ -212,15 +235,16 @@ export class Input {
     let axis = this.thrAxis;
     let rawThrottle: number | null = null;
 
-    // ---- gamepad ------------------------------------------------------------------------------------
-    const pad = this.pollGamepad();
+    // ---- gamepad or radio ----------------------------------------------------------------------------
+    const profile = this.profile();
+    const pad = this.pollGamepad(profile, ctx, c.throttle);
     if (pad && this.usingGamepad) {
-      const dz = (v: number): number => (Math.abs(v) < 0.045 ? 0 : (v - Math.sign(v) * 0.045) / 0.955);
-      yaw = dz(pad.axes[0] ?? 0);
-      roll = dz(pad.axes[2] ?? 0);
-      pitch = -dz(pad.axes[3] ?? 0);
-      axis = -dz(pad.axes[1] ?? 0);
-      if (c.throttle === 'hold') rawThrottle = clamp((1 - (pad.axes[1] ?? 0)) / 2, 0, 1);
+      const st = readSticks(pad.axes, profile, c.throttle);
+      yaw = st.yaw;
+      roll = st.roll;
+      pitch = st.pitch;
+      axis = st.climb;
+      rawThrottle = st.throttle;
     }
 
     roll = clamp(roll, -1, 1);
@@ -262,39 +286,72 @@ export class Input {
     this.right.y = pitch;
   }
 
-  private pollGamepad(): Gamepad | null {
-    if (!this.enabled || !navigator.getGamepads) return null;
-    let pad: Gamepad | null = null;
-    for (const p of navigator.getGamepads()) {
-      if (p && p.connected && p.axes.length >= 4) {
-        pad = p;
-        break;
-      }
+  /** The radio profile from settings, re-validated only when the stored object changes. */
+  profile(): RadioProfile {
+    const raw = this.settings.data.radio;
+    if (raw !== this.profileSource || !this.profileCache) {
+      this.profileSource = raw;
+      this.profileCache = sanitizeRadio(raw);
     }
+    return this.profileCache;
+  }
+
+  /**
+   * The device the radio profile points at, or the first gamepad with at least four axes.
+   * Has no side effects, so the setup screen can call it while flight input is disabled.
+   */
+  findPad(profile: RadioProfile = this.profile()): Gamepad | null {
+    if (typeof navigator === 'undefined' || !navigator.getGamepads) return null;
+    let first: Gamepad | null = null;
+    for (const p of navigator.getGamepads()) {
+      if (!p || !p.connected || p.axes.length < 4) continue;
+      if (profile.device && p.id.includes(profile.device)) return p;
+      first ??= p;
+    }
+    return first;
+  }
+
+  private pollGamepad(profile: RadioProfile, ctx: InputContext, keyboardThrottle: 'spring' | 'hold'): Gamepad | null {
+    if (!this.enabled) return null;
+    const pad = this.findPad(profile);
     if (!pad) {
       this.usingGamepad = false;
+      this.armLatch.forget();
+      this.modeLatch.forget();
       return null;
     }
     if (!this.usingGamepad) {
       for (const a of pad.axes) if (Math.abs(a) > 0.3) this.usingGamepad = true;
     }
-    const map: [number, Action][] = [
-      [0, 'arm'],
-      [1, 'reset'],
-      [2, 'turtle'],
-      [3, 'camera'],
-      [4, 'rollLeft'],
-      [5, 'rollRight'],
-      [9, 'pause'],
-    ];
-    for (const [i, action] of map) {
-      const down = !!pad.buttons[i]?.pressed;
-      if (down && !this.padButtons[i]) {
-        this.usingGamepad = true;
-        this.onAction?.(action);
+    if (profile.padButtons) {
+      const armButton = profile.arm.kind === 'button' ? profile.arm.index : -1;
+      for (const [i, action] of PAD_BUTTONS) {
+        if (i === armButton) continue;
+        const down = !!pad.buttons[i]?.pressed;
+        if (down && !this.padButtons[i]) {
+          this.usingGamepad = true;
+          this.onAction?.(action);
+        }
+        this.padButtons[i] = down;
       }
-      this.padButtons[i] = down;
     }
+
+    // arm switch: flipping it on arms, flipping it off disarms. A switch already on when the
+    // device appears does nothing until it has been cycled. As in Betaflight, it won't arm with
+    // the throttle stick up.
+    const arm = this.armLatch.update(readSwitch(profile.arm, pad.axes, pad.buttons));
+    if (arm !== null) {
+      this.usingGamepad = true;
+      const throttleUp = (readSticks(pad.axes, profile, keyboardThrottle).throttle ?? 0) > 0.05;
+      if (arm && !ctx.armed && throttleUp) this.onAction?.('armBlocked');
+      else if (arm !== ctx.armed) this.onAction?.('arm');
+    }
+
+    // mode switch: the first reading sets the mode too, so the switch and the sim agree
+    const modeNow = readModeSwitch(profile.mode, pad.axes);
+    const firstMode = this.modeLatch.current === null && modeNow !== null;
+    const mode = this.modeLatch.update(modeNow);
+    if (mode !== null || firstMode) this.onAction?.(MODE_ACTIONS[(mode ?? modeNow)!]);
     return pad;
   }
 

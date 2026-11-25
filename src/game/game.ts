@@ -8,6 +8,7 @@ import { DroneModel } from '../render/drone-model';
 import { QUALITY, type Engine } from '../render/engine';
 import type { TextureForge } from '../render/textures';
 import { getDrone, hoverThrottle, type DroneConfig } from '../sim/drone-config';
+import { sanitizeTune } from '../sim/tuning';
 import type { RcCommand, TrickKind } from '../sim/flight-controller';
 import { PHYSICS_DT, PhysicsWorld } from '../sim/physics-world';
 import { Quad, type Atmosphere } from '../sim/quad';
@@ -383,6 +384,11 @@ export class Game {
       fc.rates[axis].center = this.cfg.rates[axis].center * s.controls.rateScale;
       fc.rates[axis].max = this.cfg.rates[axis].max * s.controls.rateScale;
     }
+    // a pilot's tune from Settings > Tuning; an airframe without one keeps its stock tune
+    const tune = sanitizeTune(s.tuning[this.cfg.id], this.cfg);
+    fc.rateProfile = tune.rates ?? null;
+    fc.rateScale = s.controls.rateScale;
+    fc.setCtrl(tune.ctrl ?? this.cfg.ctrl);
   }
 
   // ------------------------------------------------------------------------------------------------
@@ -528,6 +534,9 @@ export class Game {
       }
       case 'help':
         this.emit('help', undefined);
+        break;
+      case 'armBlocked':
+        this.say('Throttle is up. Lower it, then flip the arm switch again', 'warn', 2600);
         break;
     }
   }

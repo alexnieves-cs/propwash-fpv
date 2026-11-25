@@ -1,4 +1,6 @@
 import type { QualityId } from '../render/engine';
+import type { AirframeTune } from '../sim/tuning';
+import { defaultRadio, type RadioProfile } from './radio';
 
 export type FlightModeId = 'cruise' | 'angle' | 'horizon' | 'acro';
 export type CameraView = 'fpv' | 'chase' | 'los';
@@ -44,6 +46,10 @@ export interface Settings {
   };
   audio: { master: number; motors: number; effects: number; wind: number };
   hud: { sticks: boolean; horizon: boolean; units: 'kmh' | 'mph'; minimal: boolean };
+  /** gamepad or radio mapping and calibration (Settings > Radio) */
+  radio: RadioProfile;
+  /** per-airframe rates and rate-loop tuning, by drone id; an airframe with no entry flies its stock tune */
+  tuning: Record<string, AirframeTune>;
   /** best total time per `${track}:${drone}` */
   records: Record<string, { total: number; bestLap: number; splits: number[] }>;
   bestCombo: Record<string, number>;
@@ -64,6 +70,8 @@ export const DEFAULTS: Settings = {
   sim: { battery: true, crashDisarm: true, wind: true, ghost: true },
   audio: { master: 0.7, motors: 0.8, effects: 0.8, wind: 0.7 },
   hud: { sticks: true, horizon: true, units: 'kmh', minimal: false },
+  radio: defaultRadio(),
+  tuning: {},
   records: {},
   bestCombo: {},
   seenIntro: false,
@@ -116,8 +124,9 @@ export class SettingsStore {
     }
   }
 
+  /** Restore defaults. Records, the radio calibration and airframe tunes are kept: each has its own reset. */
   reset(): void {
-    const keep = { records: this.data.records, bestCombo: this.data.bestCombo };
+    const keep = { records: this.data.records, bestCombo: this.data.bestCombo, radio: this.data.radio, tuning: this.data.tuning };
     this.data = { ...structuredClone(DEFAULTS), ...keep, seenIntro: true };
     this.save();
     for (const l of this.listeners) l(this.data);

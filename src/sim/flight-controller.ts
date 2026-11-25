@@ -1,6 +1,7 @@
 import { Euler, Quaternion, Vector3 } from 'three';
 import { DEG, clamp, pt1Gain, saturate } from '../core/math';
 import { MOTOR_LAYOUT, hoverThrottle, type AxisRates, type DroneConfig, type Rates } from './drone-config';
+import { rateDps, type RateProfile } from './rates';
 
 export type FlightMode = 'acro' | 'horizon' | 'angle';
 export type TrickKind = 'rollLeft' | 'rollRight' | 'flipFront' | 'flipBack';
@@ -63,7 +64,12 @@ export class FlightController {
   mode: FlightMode = 'acro';
   altHold = false;
   armed = false;
+  /** stock-style Actual rates, used when `rateProfile` is null (v1.0 behaviour) */
   rates: Rates;
+  /** a Betaflight rate profile from the tuning screen; replaces `rates` when set */
+  rateProfile: RateProfile | null = null;
+  /** output multiplier for `rateProfile` (the Settings rate slider) */
+  rateScale = 1;
   /** max tilt in angle mode, rad */
   maxAngle = 55 * DEG;
   levelGain = 9;
@@ -98,28 +104,48 @@ export class FlightController {
   constructor(readonly cfg: DroneConfig) {
     this.rates = JSON.parse(JSON.stringify(cfg.rates)) as Rates;
     this.hover = hoverThrottle(cfg);
+    this.setCtrl(cfg.ctrl);
+    this.inertia[0] = cfg.inertia.z;
+    this.inertia[1] = cfg.inertia.x;
+    this.inertia[2] = cfg.inertia.y;
+  }
+
+  /**
+   * Set the rate-loop gains from closed-loop targets. Called with the airframe's own `ctrl`
+   * block on construction; the tuning screen calls it again with the pilot's values. Running
+   * state (integrators, filters) is kept, so this is safe mid-flight.
+   */
+  setCtrl(ctrl: DroneConfig['ctrl']): void {
+    const cfg = this.cfg;
     const tau = (cfg.tauUp + cfg.tauDown) / 2;
     for (let a = 0; a < 2; a++) {
       // second-order response through the motor lag: pick P and D for the wanted bandwidth/damping
-      const wn = cfg.ctrl.bandwidth;
+      const wn = ctrl.bandwidth;
       this.kp[a] = tau * wn * wn;
-      this.kd[a] = Math.max(0, 2 * cfg.ctrl.damping * tau * wn - 1);
-      this.ki[a] = cfg.ctrl.ki;
-      this.kff[a] = cfg.ctrl.ff;
+      this.kd[a] = Math.max(0, 2 * ctrl.damping * tau * wn - 1);
+      this.ki[a] = ctrl.ki;
+      this.kff[a] = ctrl.ff;
     }
     // Yaw is different: spinning a rotor up or down reacts on the frame immediately, so the yaw
     // plant has a strong lead (zero at `z`). P only, sized for the wanted crossover; no D.
     const kT = cfg.maxThrust / (cfg.maxOmega * cfg.maxOmega);
     const wHover = Math.sqrt((cfg.mass * 9.81) / (4 * kT));
     const z = (2 * cfg.torqueRatio * kT * wHover) / cfg.rotorInertia;
-    const wc = cfg.ctrl.bandwidth * cfg.ctrl.yawScale;
+    const wc = ctrl.bandwidth * ctrl.yawScale;
     this.kp[2] = (wc * Math.sqrt(1 + (wc * tau) ** 2)) / Math.sqrt(1 + (wc / z) ** 2);
     this.kd[2] = 0;
     this.ki[2] = this.kp[2] * 9;
     this.kff[2] = 0.12;
-    this.inertia[0] = cfg.inertia.z;
-    this.inertia[1] = cfg.inertia.x;
-    this.inertia[2] = cfg.inertia.y;
+  }
+
+  /** Full-stick roll rate, deg/s, with whichever rates are active. */
+  maxRollRate(): number {
+    return this.rateProfile ? rateDps(1, this.rateProfile, 'roll') * this.rateScale : this.rates.roll.max;
+  }
+
+  private stickRate(stick: number, axis: 'roll' | 'pitch' | 'yaw'): number {
+    const rp = this.rateProfile;
+    return rp ? rateDps(stick, rp, axis) * this.rateScale : actualRate(stick, this.rates[axis]);
   }
 
   reset(): void {
@@ -146,7 +172,7 @@ export class FlightController {
       kind,
       axis: roll ? 0 : 1,
       dir: kind === 'rollRight' || kind === 'flipFront' ? 1 : -1,
-      rate: Math.min(roll ? 900 : 780, Math.max(this.rates.roll.max, 540)) * DEG,
+      rate: Math.min(roll ? 900 : 780, Math.max(this.maxRollRate(), 540)) * DEG,
       total: Math.PI * 2,
       angle: 0,
       phase: 0,
@@ -167,9 +193,9 @@ export class FlightController {
     const g1 = -s.gyro.x;
     const g2 = -s.gyro.y;
 
-    let sp0 = actualRate(rc.roll, this.rates.roll) * DEG;
-    let sp1 = actualRate(rc.pitch, this.rates.pitch) * DEG;
-    let sp2 = actualRate(rc.yaw, this.rates.yaw) * DEG;
+    let sp0 = this.stickRate(rc.roll, 'roll') * DEG;
+    let sp1 = this.stickRate(rc.pitch, 'pitch') * DEG;
+    let sp2 = this.stickRate(rc.yaw, 'yaw') * DEG;
     let throttle = rc.throttle;
     let useAltHold = this.altHold;
 
