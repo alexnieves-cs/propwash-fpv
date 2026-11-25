@@ -20,5 +20,5 @@ export default defineConfig(({ mode }: { mode: string }) => ({
       },
     },
   },
-  test: { environment: 'node', include: ['tests/**/*.test.ts'], testTimeout: 60000 },
+  test: { environment: 'node', include: ['tests/**/*.test.ts'], testTimeout: 60000, benchmark: { include: ['bench/**/*.bench.ts'] } },
 }) as never);
