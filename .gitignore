@@ -7,3 +7,5 @@ bench/last-run.json
 
 # local agent/editor config
 .claude/
+.realflight-data/
+__pycache__/

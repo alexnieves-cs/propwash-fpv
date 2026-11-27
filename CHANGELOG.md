@@ -11,6 +11,7 @@ Work on the `v1.1` branch. Not merged or released yet. See [docs/ROADMAP.md](doc
 - **Settings › Tuning.** Per-airframe rates in Betaflight CLI units for all five rate types (Betaflight, Raceflight, KISS, Actual, Quick), with a curve plot. Import from pasted Betaflight CLI `diff` or `dump` output, or copy the sim's rates out as CLI lines. Sliders for the rate loop's response, damping, I gain, feed-forward and yaw. The rate curves are ported from Betaflight 4.5.1 `src/main/fc/rc.c`.
 - **`npm run bench`.** Times one simulation step in Node. Results in [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
 - **[docs/PHYSICS-CHECK.md](docs/PHYSICS-CHECK.md).** The airframe table compared with published motor and prop thrust data.
+- **[docs/REAL-FLIGHT-CHECK.md](docs/REAL-FLIGHT-CHECK.md).** The motor, battery, yaw and drag equations tested against two public real-flight datasets (NanoBench Crazyflie logs and ARPL PX4 ULogs), scored on flights the fits never saw. `tools/realflight/` fetches the data and reruns it.
 - **Tests** for radio mapping and calibration, the rate curves and the CLI parser, tuning ranges, the two new settings tabs (against a small fake DOM), and golden traces that pin 1.0 flight behaviour.
 
 ### Unchanged

@@ -9,7 +9,7 @@ Milestone 1.1 makes Propwash friendlier to pilots with a real radio and their ow
 | 1. Radio setup | Done, not yet tried with real hardware | Settings › Radio; `src/core/radio.ts`, `src/ui/setup.ts` |
 | 2. Rates and tuning | Done | Settings › Tuning; `src/sim/rates.ts`, `src/sim/tuning.ts` |
 | 3. Performance | Step-cost bench done; GPU frame-rate run still to do | `npm run bench`; [PERFORMANCE.md](PERFORMANCE.md) |
-| 4. Physics check | Done as a report; follow-ups not applied | [PHYSICS-CHECK.md](PHYSICS-CHECK.md) |
+| 4. Physics check | Done as two reports; follow-ups not applied | [PHYSICS-CHECK.md](PHYSICS-CHECK.md), [REAL-FLIGHT-CHECK.md](REAL-FLIGHT-CHECK.md) |
 | 5. Browser smoke test | Not started | |
 
 ### 1. Radio setup
