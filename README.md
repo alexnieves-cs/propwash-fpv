@@ -15,7 +15,7 @@ An FPV drone simulator that runs in the browser. It models a real quadcopter —
 
 ## Run it
 
-The quickest way is the [live demo](https://alexnieves-cs.github.io/propwash-fpv/) (it downloads about 2 MB gzipped, most of it the Rapier physics engine). To run it locally you need [Node.js](https://nodejs.org) 20 or newer.
+The quickest way is the [live demo](https://alexnieves-cs.github.io/propwash-fpv/) (it downloads about 2 MB gzipped, most of it the Rapier physics engine). To run it locally you need [Node.js](https://nodejs.org) 20.19+ or 22.12+.
 
 ```bash
 npm install
@@ -48,10 +48,11 @@ Two hands, two sticks, like a real radio in Mode 2.
 | `-` `=` | Field of view narrower and wider |
 | `M` | Use the trackpad as the right stick (pointer moves pitch and roll, click centres it) |
 | `H` | Minimal HUD |
+| `Tab` | Pause and show the controls screen |
 | `Backspace` | Restart the session |
-| `Esc` | Pause |
+| `Esc` `P` | Pause |
 
-A tap on a key is a small nudge; holding it pushes the virtual stick to full deflection. A gamepad or a USB radio is picked up automatically.
+A tap on a key is a small nudge; holding it pushes the virtual stick to full deflection. `I` `K` `J` `L` do the same as `↑` `↓` `←` `→`. A gamepad or a USB radio is picked up automatically.
 
 ### Flight modes
 
@@ -116,9 +117,10 @@ npm test           # flight-model and trick-scoring tests
 npm run typecheck
 npm run build      # production build in dist/ (relative paths)
 npm run build:pages  # the GitHub Pages build, served from /propwash-fpv/
+npm run preview    # serve the last build in dist/
 ```
 
-CI runs the typecheck, the tests and the build on every push and pull request. Every push to `main` deploys the live demo to GitHub Pages.
+CI runs the typecheck, the tests and the build on every pull request and every push to `main`. Every push to `main` deploys the live demo to GitHub Pages.
 
 Graphics quality is under Settings › Display. If the frame rate is low, drop it a step; the default also lowers render resolution on its own when it has to.
 
